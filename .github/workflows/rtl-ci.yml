@@ -1,0 +1,36 @@
+name: RTL CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  portable-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sources and PicoRV32
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+
+      - name: Run accelerator simulation
+        run: |
+          mkdir -p build/ci
+          iverilog -g2012 -s tb_int8_dot_accel -o build/ci/accel.vvp \
+            rtl/int8_dot_accel.sv tb/tb_int8_dot_accel.sv
+          vvp build/ci/accel.vvp | tee build/ci/accel.log
+          grep -F "TEST_PASS: int8_dot_accel" build/ci/accel.log
+
+      - name: Run CSR simulation
+        run: |
+          iverilog -g2012 -s tb_accel_csr -o build/ci/csr.vvp \
+            rtl/int8_dot_accel.sv rtl/accel_csr.sv tb/tb_accel_csr.sv
+          vvp build/ci/csr.vvp | tee build/ci/csr.log
+          grep -F "TEST_PASS: accel_csr" build/ci/csr.log
+
+      - name: Check Python host script
+        run: python -m py_compile scripts/bin_to_hex.py scripts/uart_echo_test.py
+

@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this project, please cite the repository and release."
+title: "PicoRV32 INT8 Dot-Product Accelerator"
+type: software
+authors:
+  - name: "masterfrog945-stack"
+repository-code: "https://github.com/masterfrog945-stack/picorv32-int8-dot-accelerator"
+license: Apache-2.0
+version: 0.1.0
+date-released: 2026-08-01
+
