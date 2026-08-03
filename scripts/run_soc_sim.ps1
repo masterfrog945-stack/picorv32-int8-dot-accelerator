@@ -25,15 +25,17 @@ Copy-Item -LiteralPath (Join-Path $Root 'build\firmware\firmware.hex') `
 Push-Location $Build
 try {
     & (Join-Path $VivadoBin 'xvlog.bat') `
-        (Join-Path $Root 'external\picorv32\picorv32.v') `
-        (Join-Path $Root 'external\picorv32\picosoc\simpleuart.v')
-    if ($LASTEXITCODE -ne 0) { throw 'xvlog failed for PicoRV32/simpleuart RTL' }
+        (Join-Path $Root 'external\picorv32\picorv32.v')
+    if ($LASTEXITCODE -ne 0) { throw 'xvlog failed for PicoRV32 RTL' }
 
     & (Join-Path $VivadoBin 'xvlog.bat') --sv `
         (Join-Path $Root 'rtl\int8_dot_accel.sv') `
         (Join-Path $Root 'rtl\accel_csr.sv') `
         (Join-Path $Root 'rtl\simple_ram.sv') `
         (Join-Path $Root 'rtl\soc_test_device.sv') `
+        (Join-Path $Root 'rtl\sync_fifo.sv') `
+        (Join-Path $Root 'rtl\uart_rx_core.sv') `
+        (Join-Path $Root 'rtl\uart_tx_core.sv') `
         (Join-Path $Root 'rtl\uart_mmio.sv') `
         (Join-Path $Root 'rtl\picorv32_accel_soc.sv') `
         (Join-Path $Root 'tb\tb_picorv32_accel_soc.sv')

@@ -5,7 +5,7 @@
 // The existing PicoRV32 firmware runs a deterministic accelerator self-test.
 // Software accesses the accelerator over the SoC's internal MMIO bus.  The
 // sticky self-test result is shown on LEDs; a 115200-8N1 UART is exposed on the
-// Raspberry Pi header for an interactive byte-for-byte echo test.
+// Raspberry Pi header for the framed CRC command protocol.
 module pynqz2_accel_top #(
     parameter MEM_INIT_FILE = "firmware.hex"
 ) (
@@ -22,8 +22,7 @@ module pynqz2_accel_top #(
     // inferred block RAM enable/reset network.
     (* ASYNC_REG = "TRUE" *)
     logic [1:0] btn_rst_sync = 2'b00;
-    logic [3:0] reset_release = 4'b0000;
-
+    logic [17:0] reset_count = 18'd0;
     logic        resetn;
     logic        trap;
     logic        test_done;
@@ -32,13 +31,15 @@ module pynqz2_accel_top #(
     always_ff @(posedge sysclk) begin
         btn_rst_sync <= {btn_rst_sync[0], btn_rst};
 
-        if (btn_rst_sync[1])
-            reset_release <= 4'b0000;
-        else
-            reset_release <= {reset_release[2:0], 1'b1};
+        if (btn_rst_sync[1]) begin
+            reset_count <= 18'd0;
+        end else if (!reset_count[17]) begin
+            reset_count <= reset_count + 18'd1;
+        end
     end
 
-    assign resetn = reset_release[3];
+    assign resetn = reset_count[17];
+
 
     picorv32_accel_soc #(
         .MEM_INIT_FILE (MEM_INIT_FILE)
