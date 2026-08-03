@@ -16,6 +16,12 @@ build/
 *.disasm
 *.pyc
 __pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+clockInfo.txt
 xsim.dir/
 .Xil/
 project_1.cache/
