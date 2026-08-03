@@ -14,7 +14,9 @@ if {[llength [get_board_parts -quiet $board_part]] > 0} {
 
 add_files -norecurse [list \
     [file join $root external picorv32 picorv32.v] \
-    [file join $root external picorv32 picosoc simpleuart.v] \
+    [file join $root rtl sync_fifo.sv] \
+    [file join $root rtl uart_rx_core.sv] \
+    [file join $root rtl uart_tx_core.sv] \
     [file join $root rtl int8_dot_accel.sv] \
     [file join $root rtl accel_csr.sv] \
     [file join $root rtl simple_ram.sv] \
@@ -25,7 +27,6 @@ add_files -norecurse [list \
 
 set_property file_type SystemVerilog [get_files -quiet *.sv]
 set_property file_type Verilog [get_files -quiet picorv32.v]
-set_property file_type Verilog [get_files -quiet simpleuart.v]
 
 add_files -fileset constrs_1 -norecurse \
     [file join $root constraints pynqz2_accel_board.xdc]
@@ -43,4 +44,3 @@ set_property top pynqz2_accel_top [get_filesets sources_1]
 update_compile_order -fileset sources_1
 puts "PROJECT_PASS: [file join $build_dir picorv32_int8_accelerator.xpr]"
 close_project
-

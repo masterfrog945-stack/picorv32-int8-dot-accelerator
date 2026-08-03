@@ -4,6 +4,11 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![FPGA](https://img.shields.io/badge/FPGA-PYNQ--Z2-8a2be2.svg)](https://www.tulembedded.com/FPGA/ProductsPYNQ-Z2.html)
 
+## 项目概况
+
+基于 PicoRV32 设计一款四路有符号 INT8 点积加速器 SoC，并在
+PYNQ-Z2 上完成 RTL 仿真、固件驱动、综合实现和 UART 板级验证。
+
 A reproducible FPGA prototype that couples a PicoRV32 RV32I soft CPU with a
 four-lane signed INT8 dot-product accelerator on the PYNQ-Z2. The project
 includes the RTL core, memory-mapped control/status registers, 64 KiB firmware
@@ -14,6 +19,25 @@ This is deliberately described as a **dot-product accelerator prototype**, not
 a complete neural-network accelerator. The current compute core evaluates four
 parallel INT8 products and accumulates them into one signed 32-bit result.
 
+## Why This Project Matters
+
+INT8 dot products are the basic arithmetic operation behind fully connected
+layers, convolution, similarity scoring, and many DSP kernels. This project
+demonstrates how that operation can be integrated into a small programmable
+SoC rather than presented as an isolated multiplier demo:
+
+- PicoRV32 acts as the control plane for protocol parsing, register
+  configuration, error handling, and performance measurement.
+- The dedicated RTL core performs four signed multiplications in parallel and
+  accumulates their products in hardware.
+- BRAM, MMIO, FIFO-backed UART, bare-metal firmware, and a Python golden model
+  form a complete host-to-accelerator verification path.
+
+The current design is suitable as a minimal edge-AI accelerator research
+platform. Turning it into an end-to-end inference engine still requires
+batched/streaming operands, on-chip weight buffers, requantization, activation
+functions, and a real TinyML model.
+
 ## Architecture
 
 ```mermaid
@@ -22,7 +46,7 @@ flowchart LR
     CPU -->|"native valid/ready bus"| DEC["Address decoder"]
     DEC --> RAM["64 KiB BRAM"]
     DEC --> HOST["Test/LED device"]
-    DEC --> UART["115200 8N1 UART"]
+    DEC --> UART["115200 8N1 UART + RX/TX FIFOs"]
     DEC --> CSR["Accelerator CSR/MMIO"]
     CSR --> DOT["4-lane signed INT8 dot core"]
 ```
@@ -36,10 +60,17 @@ processing system is not used.
 - PicoRV32 native single-transaction `valid/ready` memory bus.
 - Memory-mapped accelerator registers with sticky completion status and IRQ.
 - Bare-metal C driver and independent software golden model.
-- Five directed and sixteen firmware-generated randomized SoC test cases.
+- Versioned UART command protocol with sequence numbers, payload lengths, and
+  CRC-16/CCITT-FALSE error detection.
+- Independent 32-byte RX/TX FIFOs with overflow, framing-error, and false-start
+  diagnostics.
+- Python-driven PING, framed ECHO, UART statistics, accelerator DOT4, and
+  PicoRV32 C-reference commands.
+- Six directed and configurable randomized board-level DOT4 accuracy cases.
 - Standalone accelerator testbench with 1,000 random vectors and eight
   functional coverage goals.
-- Two-flop UART RX synchronizer and polling-based firmware echo service.
+- Two-flop UART RX synchronizer, three-sample majority voting, and a
+  firmware-level inter-byte timeout for protocol recovery.
 - Scripted simulation, firmware compilation, synthesis, implementation, and
   JTAG programming flows for Vivado 2024.2.
 
@@ -49,23 +80,43 @@ processing system is not used.
 |---|---|---|
 | `0x0000_0000-0x0000_FFFF` | RAM | Instructions, data, and stack |
 | `0x1000_0000-0x1000_0FFF` | Test device | Sticky PASS/FAIL result for LEDs/testbench |
-| `0x2000_0000-0x2000_0FFF` | UART | Clock divider and RX/TX data |
+| `0x2000_0000-0x2000_0FFF` | UART | RX/TX FIFOs, clock divider, levels, and error counters |
 | `0x4000_0000-0x4000_0FFF` | Accelerator | Control, vectors, result, status, IRQ |
 
-See [docs/register_map.md](docs/register_map.md) for the accelerator register
-definitions.
+See [docs/register_map.md](docs/register_map.md) for the register definitions
+and [docs/uart_protocol.md](docs/uart_protocol.md) for the wire protocol.
 
-## Measured PYNQ-Z2 Result
+## Verified Results
+
+### Functional and board verification
+
+| Test | Result |
+|---|---:|
+| Standalone accelerator simulation | 1,007 cases passed |
+| Functional coverage goals | 8 / 8 hit |
+| CSR/MMIO testbench | 203 operations passed |
+| Firmware-driven SoC simulation | PING, FIFO ECHO, CRC rejection, and DOT4 passed |
+| Board DOT4 accuracy | 10,006 vectors, 0 mismatches |
+| Accelerator driver latency | 145 cycles fixed |
+| PicoRV32 C reference latency | 2,595.03 cycles average |
+| Driver-level speedup | 17.90x |
+
+The 10,006-vector board run completed successfully but required 25 protocol
+retries. The final arithmetic results contained no mismatches, while the retry
+count shows that the external CP2102/UART path is still a prototype transport,
+not a production-grade data interface.
+
+### PYNQ-Z2 implementation
 
 The following numbers describe the **complete SoC**, not the accelerator alone.
 They were generated by Vivado 2024.2 for `xc7z020clg400-1` at 125 MHz.
 
 | Metric | Result |
 |---|---:|
-| WNS | `+0.706 ns` |
-| WHS | `+0.076 ns` |
-| Slice LUTs | 1,501 / 53,200 (2.82%) |
-| Slice registers | 956 / 106,400 (0.90%) |
+| WNS | `+0.122 ns` |
+| WHS | `+0.084 ns` |
+| Slice LUTs | 1,748 / 53,200 (3.29%) |
+| Slice registers | 1,205 / 106,400 (1.13%) |
 | BRAM tiles | 16 / 140 (11.43%) |
 | DSP48 blocks | 0 / 220 |
 | Routing errors | 0 |
@@ -153,17 +204,22 @@ Use crossed 3.3 V UART wiring. Do not connect the CP2102 5 V/VCC pin.
 | RXD | Physical pin 8 | V6 / RPIO14 | `uart_tx` |
 | GND | Physical pin 6 | GND | GND |
 
-Install the host dependency and start with a conservative one-byte test:
+Install the host dependency, confirm the framed protocol, and then run the
+transport and accelerator tests:
 
 ```powershell
 python -m pip install -r requirements.txt
 python .\scripts\uart_echo_test.py --list
-python .\scripts\uart_echo_test.py --port COM5 --count 256 --chunk-size 1
-python .\scripts\uart_echo_test.py --port COM5 --count 10000 --chunk-size 0
+python .\scripts\uart_echo_test.py --mode ping --port COM5
+python .\scripts\uart_echo_test.py --mode echo --port COM5 --count 10000 --chunk-size 32
+python .\scripts\uart_echo_test.py --mode stats --port COM5
+python .\scripts\uart_echo_test.py --mode dot4 --port COM5 --count 10000 --cpu-samples 256
 ```
 
-Passing UART echo validates the transport path; it does not by itself measure
-accelerator accuracy or performance.
+Framed ECHO validates the transport, FIFO backpressure, and CRC recovery.
+DOT4 mode compares every signed INT8 hardware result against a Python golden
+model and can measure a PicoRV32 C baseline. Link retries are reported rather
+than hidden; a retry-free run remains the strict signal-integrity target.
 
 ## Repository Layout
 
@@ -183,15 +239,17 @@ external/     pinned PicoRV32 Git submodule
 - Fixed four-element dot product; no matrix engine or convolution datapath.
 - `busy` prevents a new request while an operation is in flight, so this is not
   a one-result-per-cycle streaming pipeline.
-- No DMA, cache, UART FIFO, or batched accelerator command queue.
-- The CPU currently polls completion; CPU interrupts and cycle counters are
-  disabled in the reference configuration.
+- No DMA, cache, or batched accelerator command queue.
+- The CPU currently polls completion; accelerator interrupts are not connected
+  to the CPU, although `rdcycle` counters are enabled for latency measurement.
+- The host transport is limited to 115200 baud and is not representative of a
+  production accelerator interconnect.
 - No end-to-end neural-network model has been demonstrated yet.
 
 ## Roadmap
 
-- [ ] Versioned UART command protocol with length and CRC fields.
-- [ ] Hardware cycle counters and PicoRV32 C baseline measurements.
+- [x] Versioned UART command protocol with length and CRC fields.
+- [x] Hardware cycle counters and PicoRV32 C baseline measurements.
 - [ ] Parameterized/streaming INT8 MAC engine and batched operands.
 - [ ] LUT and DSP48 implementations compared for Fmax, area, power, and GOPS.
 - [ ] Matrix-vector or fully connected layer accelerator.
@@ -204,4 +262,3 @@ the [Apache License 2.0](LICENSE). PicoRV32 is an independent upstream project
 licensed under the ISC License and pinned as a submodule at commit
 `87c89acc18994c8cf9a2311e871818e87d304568`. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance details.
-

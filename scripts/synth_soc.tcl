@@ -6,7 +6,9 @@ file mkdir $build_dir
 create_project -in_memory -part xc7z020clg400-1
 
 read_verilog [file join $root external picorv32 picorv32.v]
-read_verilog [file join $root external picorv32 picosoc simpleuart.v]
+read_verilog -sv [file join $root rtl sync_fifo.sv]
+read_verilog -sv [file join $root rtl uart_rx_core.sv]
+read_verilog -sv [file join $root rtl uart_tx_core.sv]
 read_verilog -sv [list \
     [file join $root rtl int8_dot_accel.sv] \
     [file join $root rtl accel_csr.sv] \

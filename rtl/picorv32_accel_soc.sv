@@ -100,7 +100,9 @@ module picorv32_accel_soc #(
     picorv32 #(
         .PROGADDR_RESET  (32'h0000_0000),
         .STACKADDR       (32'h0001_0000),
-        .ENABLE_COUNTERS (0),
+        // rdcycle is used to measure CPU and accelerator service latency on
+        // the board. Keep the counter enabled even though IRQ is still off.
+        .ENABLE_COUNTERS (1),
         .ENABLE_IRQ      (0),
         .COMPRESSED_ISA  (0)
     ) cpu (
@@ -159,8 +161,8 @@ module picorv32_accel_soc #(
         .irq       (accel_irq)
     );
 
-    // 0x2000_0000: divider; 0x2000_0004: RX/TX data.  The wrapper also
-    // synchronizes the asynchronous board RX pin before simpleuart samples it.
+    // 0x2000_0000: divider; 0x2000_0004: RX/TX FIFO data. The peripheral
+    // synchronizes the asynchronous board RX pin before the receiver samples it.
     uart_mmio #(
         .DEFAULT_DIV (1085)
     ) uart (
